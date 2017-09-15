@@ -1,90 +1,35 @@
-package utilityBot;
+package halimBot;
 
-//import java.util.Random;
+import Bots.*;
 import battlecode.common.*;
 
 public strictfp class RobotPlayer {
-	/*public static RobotController control;
-	public static Utility util;
+	public static RobotController controller;
 	
-	private static Random rand;
-
-	private static Direction[] dirList;
-	
-	public static final int GARDENER_MAX = 5;
-	public static final int LUMBERJACK_MAX = 10;*/
-	
-	@SuppressWarnings("unused")
-	public static void run(RobotController myRC) throws GameActionException{
-		Utility util = new Utility(myRC);
-		Network network = new Network();
-		Behavior behavior = new Behavior();
-		//Strategy strategy = new Strategy(myRC);
+	public static void run(RobotController myRC) {
+		RobotPlayer.controller = myRC;
 		
-		switch(myRC.getType()) {
+		switch(controller.getType()) {
 		case ARCHON:
-			while(true) {
-				util.updateInfo();
-				network.updateNetwork();
-				behavior.makeChoice();
-				util.clear();
-			}
-			
-			//break;
+			Archon.runCluster();
+			break;
 		case GARDENER:
-			while(true) {
-				util.updateInfo();
-				network.updateNetwork();
-				behavior.makeChoice();
-				util.clear();
-			}
-			
-			//break;
+			Gardener.runCluster();
+			break;
 		case LUMBERJACK:
-			while(true) {
-				util.updateInfo();
-				network.updateNetwork();
-				behavior.makeChoice();
-				util.clear();
-			}
-			
-			//break;
+			LumberJack.runCluster();
+			break;
 		case SCOUT:
-			while(true) {
-				util.updateInfo();
-				network.updateNetwork();
-				behavior.makeChoice();
-				util.clear();
-			}
-			//break;
+			Scout.runCluster();
+			break;
 		case SOLDIER:
-			while(true) {
-				util.updateInfo();
-				network.updateNetwork();
-				behavior.makeChoice();
-				util.clear();
-			}
-			
-			//break;
+			Soldier.runCluster();
+			break;
 		case TANK:
-			while(true) {
-				util.updateInfo();
-				network.updateNetwork();
-				behavior.makeChoice();
-				util.clear();
-			}
-			
-			//break;
+			Soldier.runCluster();
+			break;
 		default:
-			while(true) {
-				util.updateInfo();
-				network.updateNetwork();
-				behavior.makeChoice();
-				util.clear();
-			}
-			
-			//break;
-		
+			break;
 		}
 	}
 }

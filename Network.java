@@ -1,270 +1,176 @@
-package utilityBot;
+package Mechanics;
 import battlecode.common.*;
+import static halimBot.RobotPlayer.controller;
 
-//for networking nearby dangerous enemies.
-public class Network extends Utility{
-	private Stream stream;
-	public Node current;
-	//public Strategy strategy;
+public class Network {
+	public static RobotInfo[] myRobots;
+	public static RobotInfo[] enemyBots;
 	
-	public StreamHashSet network = new StreamHashSet();
-	MapLocation[] dangers = new MapLocation[20];
-	MapLocation currentArchon;
+	static Team enemy = controller.getTeam().opponent();
 	
-	public int dangerCount;
+	static int myRobotCount = 0;
+	static int enemyCount = 0;
 	
-	public boolean isStart = true;
-	public boolean buildLumberJack;
-	public boolean buildSoldier;
-	public boolean chase;
-	public boolean congregate;
-	public boolean inDanger;
+	static MapLocation[] inititialTeamArchonLoc;
+	static MapLocation[] inititialEnemyArchonLoc;
 	
-	public Network() throws GameActionException{
-		//super(myRC);
-		//updateNetwork();
+	public static TreeInfo[] neutralTrees;
+	public static TreeInfo[] myTrees;
+	public static TreeInfo[] enemyTrees;
+	
+	public static void updateNetwork()throws GameActionException{
+		senseBots();
+		senseTrees();
 	}
-	
-	public void updateNetwork()throws GameActionException {
-		robots = controller.senseNearbyRobots();
+	public static void senseBots()throws GameActionException {
+		enemyBots = controller.senseNearbyRobots(-1,enemy);
+		myRobots = controller.senseNearbyRobots(-1,controller.getTeam());
 		
-		if(!isStart) {
-			for(RobotInfo robot: robots) {
-				Stream stream = buildStreams(robot);
-				int startSocket = stream.getStartSocket();
-				
-				sendStreams(stream,startSocket);
-				readStream(startSocket);
-				
+		myRobotCount = myRobots.length;
+		//enemyCount = enemyBots.length;
+		
+		controller.broadcastInt(Ports.ALLY_COUNT, myRobotCount);
+		
+		for(RobotInfo robot: enemyBots) {
+			for(int i=Ports.ENEMY_LOC_PORT_START;i<Ports.ENEMY_LOC_PORT_END;i+=2) {
+				if(controller.readBroadcast(i) == 0) {
+					controller.broadcastFloat(i,robot.getLocation().x);
+					controller.broadcastFloat(i+1,robot.getLocation().y);
+					break;
+				}else {
+					if(i == Ports.ENEMY_LOC_PORT_END-2) {
+						for(int j=Ports.ENEMY_LOC_PORT_START;j<Ports.ENEMY_LOC_PORT_END;j+=2) {
+							if(controller.readBroadcast(j) != 0) {
+								controller.broadcastFloat(j,0);
+								controller.broadcastFloat(j+1,0);
+							}
+						}
+					}
+				}
+			}enemyCount++;
+		}
+		controller.broadcastInt(Ports.ENEMY_COUNT, enemyCount);
+		
+		for(RobotInfo robot: myRobots) {
+			int i = 0;
+			int k = 0;
+			
+			switch(robot.getType()) {
+			case ARCHON:
+				i = Ports.TEAM_ARCHON_PORT_START;
+				k = Ports.TEAM_ARCHON_PPORT_END;
+				broadcast(i,k,robot);
+				break;
+			case GARDENER:
+				i = Ports.TEAM_GARDENER_PORT_START;
+				k = Ports.TEAM_GARDENER_PORT_END;
+				broadcast(i,k,robot);
+				break;
+			case LUMBERJACK:
+				i = Ports.TEAM_LUMBERJACK_PORT_START;
+				k = Ports.TEAM_LUMBERJACK_PORT_END;
+				broadcast(i,k,robot);
+				break;
+			case SCOUT:
+				i = Ports.TEAM_SCOUT_PORT_START;
+				k = Ports.TEAM_SCOUT_PORT_END;
+				broadcast(i,k,robot);
+				break;
+			case SOLDIER:
+				i = Ports.TEAM_SOLDIER_PORT_START;
+				k = Ports.TEAM_SOLDIER_PORT_END;
+				broadcast(i,k,robot);
+				break;
+			case TANK:
+				break;
+			default:
+				break;
+			
 			}
 			
-			readDanger();
-		}
-		
-		setBehaviour();
-		
-		if(network.isFull()) {
-			network.clear();
-		}
-		currentArchon = controller.getInitialArchonLocations(controller.getTeam())[0];
-		
-	}
-	public void setBehaviour() {
-		if(allyCount >= 1) {
-			isStart = false;
-			return;
-		}
-		
-		if(trees.length >= 4) {
-			buildLumberJack = true;
-		}
-		
-		if(dangerCount >= 10) {
-			inDanger = true;
-			buildSoldier = true;
-			congregate = true;
-		}else if((dangerCount < 10) && (allyCount < 10)) {
-			inDanger = false;
-			buildLumberJack = true;
-			congregate = true;
-		}else if((dangerCount >= 10) && (allyCount >= 10)) {
-			inDanger = true;
-			buildSoldier = true;
-			chase = true;
-		}else {
-			inDanger = false;
-			buildSoldier = true;
-			buildLumberJack = true;
-			congregate = true;
 		}
 	}
-	public void readDanger()throws GameActionException {
-		float distance = 0;
-		int i=0;
+	public static MapLocation findBroadcast(RobotType type)throws GameActionException {
+		int i = 0;
+		int k = 0;
 		
-		readSoldierStreams();
-		addDanger(i,distance);
-		
-		readTankStreams();
-		addDanger(i,distance);
-		
-		readLumberjackStreams();
-		addDanger(i,distance);
-		
-		readScoutStreams();
-		addDanger(i,distance);
-		
-	}
-	public void addDanger(int i,float distance) {
-		while(readNext()) {
-			distance = this.stream.getLocation().distanceSquaredTo(controller.getLocation());
-			if(distance <= controller.getType().strideRadius*10) {
-				dangers[i] = this.stream.getLocation();
-				i++;
-				dangerCount++;
-			}
-		}
-	}
-	public void sendStreams(Stream stream,int socket)throws GameActionException {
-		if(stream != null && stream.getThreat()) {
-			network.add(socket, stream);
-		}
-	}
-	
-	public void readArchonStreams()throws GameActionException {
-		readStream(Sockets.ARCHON_SOCKET_START);
-	}
-	
-	public void readGardenerStreams()throws GameActionException {
-		readStream(Sockets.GARDENER_SOCKET_START);
-	}
-	
-	public void readLumberjackStreams()throws GameActionException {
-		readStream(Sockets.JACK_SOCKET_START);
-	}
-	
-	public void readSoldierStreams()throws GameActionException {
-		readStream(Sockets.SOLDIER_SOCKET_START);
-	}
-	
-	public void readScoutStreams()throws GameActionException {
-		readStream(Sockets.SCOUT_SOCKET_START);
-	}
-	
-	public void readTankStreams()throws GameActionException {
-		readStream(Sockets.TANK_SOCKET_START);
-	}
-	
-	public boolean readNext() {
-		if(this.current != null && this.current.next != null) {
-			this.current = this.current.next;
-			return true;
-		}
-		return false;
-	}
-	
-	public void readStream(int socket) throws GameActionException{
-	    this.current = network.searchNode(socket);
-	    
-	    if(this.current == null) {
-	    	return;
-	    }else {
-	    	this.stream = current.data;
-	    }
-	    
-	}
-	
-	public Stream getStream() {return this.stream;}
-	
-	public void clearStreams(int socket)throws GameActionException {
-		Node node = network.searchNode(socket);
-		network.delete(socket,node.data);
-	}
-	
-	public void sendStrategy(int strategy)throws GameActionException {
-		controller.broadcastInt(Sockets.STRATEGY_SOCKET, strategy);
-	}
-	
-	public static Stream buildStreams(RobotInfo robot) {
-		switch(robot.getType()) {
+		switch(type) {
 		case ARCHON:
-			int id = robot.getID();
-			MapLocation loc = robot.getLocation();
-			int round = controller.getRoundNum();
-			int start = Sockets.ARCHON_SOCKET_START;
-			RobotType type = robot.getType();
-			
-			float distance = controller.getLocation().distanceSquaredTo(loc);
-			
-			if(distance <= controller.getType().strideRadius*5) {
-				Stream stream = new Stream(id,loc,start,round,type,true);
-				return stream;
-			}
-			
-			Stream stream = new Stream(id,loc,start,round,type,false);
-			return stream;
+			i = Ports.TEAM_ARCHON_PORT_START;
+			k = Ports.TEAM_ARCHON_PPORT_END;
+			return readBroadcast(i,k);
 		case GARDENER:
-			id = robot.getID();
-			loc = robot.getLocation();
-			round = controller.getRoundNum();
-			start = Sockets.GARDENER_SOCKET_START;
-			type = robot.getType();
-			
-			distance = controller.getLocation().distanceSquaredTo(loc);
-			
-			if(distance <= controller.getType().strideRadius*3) {
-				stream = new Stream(id,loc,start,round,type,true);
-				return stream;
-			}
-			
-			stream = new Stream(id,loc,start,round,type,false);
-			return stream;
+			i = Ports.TEAM_GARDENER_PORT_START;
+			k = Ports.TEAM_GARDENER_PORT_END;
+			return readBroadcast(i,k);			
 		case LUMBERJACK:
-			id = robot.getID();
-			loc = robot.getLocation();
-			round = controller.getRoundNum();
-			start = Sockets.JACK_SOCKET_START;
-			type = robot.getType();
-			
-			distance = controller.getLocation().distanceSquaredTo(loc);
-			
-			if(distance <= controller.getType().strideRadius*3) {
-				stream = new Stream(id,loc,start,round,type,true);
-				return stream;
-			}
-			
-			stream = new Stream(id,loc,start,round,type,false);
-			return stream;
-		case SOLDIER:
-			id = robot.getID();
-			loc = robot.getLocation();
-			round = controller.getRoundNum();
-			start = Sockets.SOLDIER_SOCKET_START;
-			type = robot.getType();
-			
-			distance = controller.getLocation().distanceSquaredTo(loc);
-			
-			if(distance <= controller.getType().strideRadius*3) {
-				stream = new Stream(id,loc,start,round,type,true);
-				return stream;
-			}
-			
-			stream = new Stream(id,loc,start,round,type,false);
-			return stream;
+			i = Ports.TEAM_LUMBERJACK_PORT_START;
+			k = Ports.TEAM_LUMBERJACK_PORT_END;
+			return readBroadcast(i,k);			
 		case SCOUT:
-			id = robot.getID();
-			loc = robot.getLocation();
-			round = controller.getRoundNum();
-			start = Sockets.SCOUT_SOCKET_START;
-			type = robot.getType();
-			
-			distance = controller.getLocation().distanceSquaredTo(loc);
-			
-			if(distance <= controller.getType().strideRadius*3) {
-				stream = new Stream(id,loc,start,round,type,true);
-				return stream;
-			}
-			
-			stream = new Stream(id,loc,start,round,type,false);
-			return stream;
+			i = Ports.TEAM_SCOUT_PORT_START;
+			k = Ports.TEAM_SCOUT_PORT_END;
+			return readBroadcast(i,k);
+		case SOLDIER:
+			i = Ports.TEAM_SOLDIER_PORT_START;
+			k = Ports.TEAM_SOLDIER_PORT_END;
+			return readBroadcast(i,k);
 		case TANK:
-			id = robot.getID();
-			loc = robot.getLocation();
-			round = controller.getRoundNum();
-			start = Sockets.TANK_SOCKET_START;
-			type = robot.getType();
-			
-			distance = controller.getLocation().distanceSquaredTo(loc);
-			
-			if(distance <= controller.getType().strideRadius*3) {
-				stream = new Stream(id,loc,start,round,type,true);
-				return stream;
-			}
-			
-			stream = new Stream(id,loc,start,round,type,false);
-			return stream;
+			break;
 		default:
-			return null;
+			break;
+		}
+		return controller.getLocation();
+	}
+	
+	public static MapLocation readBroadcast(int start,int end) throws GameActionException{
+		int count = 0;
+		MapLocation loc = controller.getLocation();
+		if(controller.readBroadcastInt(Ports.ALLY_COUNT) >= 1) {
+			for(int i=start;i<end;i+=2) {
+				if(count != 0 && controller.readBroadcast(i) == 0) {
+					float x = controller.readBroadcastFloat(i-1);
+					float y = controller.readBroadcastFloat(i-2);
+					loc = new MapLocation(x,y);
+					
+					if(!loc.equals(controller.getLocation()) && loc.isWithinDistance(controller.getLocation(),controller.getType().strideRadius)) {
+						return loc.add((float)(Math.PI/4),controller.getType().strideRadius);
+					}else {
+						count++;
+					}
+				}else {
+					float x = controller.readBroadcastFloat(i);
+					float y = controller.readBroadcastFloat(i+1);
+					loc = new MapLocation(x,y);
+					
+					return loc;
+				}
+			}
+		}
+		return loc;
+	}
+	public static void broadcast(int start,int end,RobotInfo robot)throws GameActionException {
+		for(int i=start;i<end;i+=2) {
+			if(controller.readBroadcast(i) == 0) {
+				controller.broadcastFloat(i,robot.getLocation().x);
+				controller.broadcastFloat(i+1,robot.getLocation().y);
+			}else {
+				if(i == end-2) {
+					for(int j=start;j<end;j+=2) {
+						if(controller.readBroadcast(j) != 0) {
+							controller.broadcastFloat(j,0);
+							controller.broadcastFloat(j+1,0);
+						}
+					}
+				}
+			}
 		}
 	}
+	
+	public static void senseTrees()throws GameActionException{
+		myTrees = controller.senseNearbyTrees(-1,controller.getTeam());
+		neutralTrees = controller.senseNearbyTrees(-1,Team.NEUTRAL);
+		enemyTrees = controller.senseNearbyTrees(-1,enemy);
+	}
+	
 }
