@@ -6,95 +6,49 @@ import Mechanics.*;
 public class Gardener {	
 	static int jackCount = 0;
 	static int soldierCount = 0;
+	
 	static boolean isStart = true;
 	static boolean isLeader = false;
+	static boolean shouldBuild = false;
+	
+	static Direction start = null;
+	static RobotInfo leader = null;
+	static int starter = 0;
+	
 	public static void runCluster() {		
 		Behavior.initialize();
 		while(true) {
 			try {
-				if(isStart) {	
-					if(controller.readBroadcastInt(Ports.TEAM_GARDENER_COUNT)%2 != 0) {
-						isLeader = true;
-					}
-					
-					isStart = false;
-				}else {
-					if(controller.getHealth() < controller.getType().getStartingHealth()/4) {
-						controller.broadcastInt(Ports.TEAM_GARDENER_COUNT, controller.readBroadcast(Ports.TEAM_GARDENER_COUNT)-1);
-					}
-				}
+				prelim();
 				
-				if(controller.getRoundNum() > 1000 && controller.getTeamBullets() >= 3*controller.getVictoryPointCost()) {
-					controller.donate(controller.getVictoryPointCost());
-				}
-				
-				jackCount = controller.readBroadcastInt(Ports.TEAM_LUMBERJACK_COUNT);
-				soldierCount = controller.readBroadcastInt(Ports.TEAM_SOLDIER_COUNT);
-				
-				Network.updateNetwork();
 				Behavior.evade();
 				
-				MapLocation rallyPoint = controller.getLocation().translate(controller.getType().strideRadius, controller.getType().strideRadius);
-				Direction rallyDirection = controller.getLocation().directionTo(rallyPoint);
+				//boolean shouldBuild = controller.readBroadcastBoolean(Ports.SHOULD_BUILD);
 				
-				if(isLeader) {
-					controller.broadcastInt(Ports.TEAM_GARDENER_COUNT, controller.readBroadcast(Ports.TEAM_GARDENER_COUNT)+1);
-					
-					Network.broadcast(Ports.TEAM_GARDENER_PORT_START, Ports.TEAM_GARDENER_PORT_END, controller.senseRobot(controller.getID()));
-					
-					rallyPoint.add((float)Math.PI/4,controller.getType().sensorRadius);
-					rallyDirection = controller.getLocation().directionTo(rallyPoint);
-										
-					/*if(!controller.isLocationOccupied(controller.getLocation().add(rallyDirection.opposite(), GameConstants.GENERAL_SPAWN_OFFSET*2))){
-						Behavior.plant(rallyDirection.opposite());
-					}*/
-					
-					if((jackCount < soldierCount )) {
-						Behavior.produceUnit(RobotType.SOLDIER,rallyDirection);
-					}
-					
-					if(!controller.isCircleOccupiedExceptByThisRobot(controller.getLocation(), GameConstants.GENERAL_SPAWN_OFFSET*3)){
+				if(isLeader == true && shouldBuild == true) {										
+					bestBuild();
+					//Behavior.checkDirection(start.opposite());
+				}else {	
+					if(!controller.isCircleOccupiedExceptByThisRobot(controller.getLocation(), GameConstants.GENERAL_SPAWN_OFFSET*3)
+							&& Network.neutralTrees.length < 3
+							&& Network.myTrees.length < 4){
 						Behavior.plant();
+						if(controller.canWater()) {
+							Behavior.water();
+						}
+						
 					}else {
-						Behavior.checkDirection(rallyDirection);
-					}
-					
-					if(controller.getRoundNum()%10 == 0 && Behavior.rand.nextInt(5) == 3) {
-						Behavior.produceUnit(RobotType.SCOUT, rallyDirection);
-					}
-				}else {
-					int round = controller.getRoundNum();
-					
-					if(round%20 == 0) {
-						rallyPoint = Network.findBroadcast(RobotType.GARDENER).add((float)Math.PI, controller.getType().sensorRadius/2);
-					}else {
-						rallyPoint = controller.getLocation().translate(controller.getType().strideRadius, controller.getType().strideRadius);
-					}
-					
-					if(rallyPoint.compareTo(controller.getLocation()) == 0) {
-						rallyPoint = Network.findBroadcast(RobotType.ARCHON).add((float)Math.PI, controller.getType().sensorRadius/2);
-					}
-					
-					rallyDirection = controller.getLocation().directionTo(rallyPoint);
-					
-					if((jackCount < soldierCount )) {
-						Behavior.produceUnit(RobotType.LUMBERJACK,rallyDirection);
-					}else {
-						Behavior.produceUnit(RobotType.SOLDIER,rallyDirection);
-					}
-					
-					if(!controller.isCircleOccupiedExceptByThisRobot(controller.getLocation(), GameConstants.GENERAL_SPAWN_OFFSET*3)){
-						Behavior.plant();
-					}else {
-						Behavior.checkDirection(rallyDirection);
-					}
+						Behavior.checkDirection(start);
+						isLeader = true;
+						shouldBuild = true;
+					}	
 				}
 				
-				
-				if(controller.canWater()) {
-					Behavior.water();
+				starter = Clock.getBytecodeNum();
+				if(starter > 10000) {
+					Clock.yield();
 				}
-				Clock.yield();
+				
 			}catch(Exception e) {
 				System.out.println("Saved Gardener cluster");
 				e.printStackTrace();
@@ -102,19 +56,89 @@ public class Gardener {
 		}
 	}
 	
-	public static boolean canPlant() throws GameActionException{
-		Network.updateNetwork();
+	public static void prelim()throws GameActionException {
+		if(isStart) {	
+			leaderCheck();
+			isStart = false;
+			Network.updateNetwork();
+			
+			start = Behavior.randomDirection();
 		
-		if(!(Network.neutralTrees.length == 0) && !(Network.myTrees.length == 0)) {
-			Network.neutralTrees = controller.senseNearbyTrees(controller.getLocation(), GameConstants.GENERAL_SPAWN_OFFSET*2, Team.NEUTRAL);
-			Network.myTrees = controller.senseNearbyTrees(controller.getLocation(),  GameConstants.GENERAL_SPAWN_OFFSET*2, controller.getTeam());
-
-			if(Network.neutralTrees.length > 0 && Network.myTrees.length > 0) {
-				return false;
+			Network.neutralTrees = controller.senseNearbyTrees(GameConstants.GENERAL_SPAWN_OFFSET*2, Team.NEUTRAL);
+			
+			Behavior.produceUnit(RobotType.SOLDIER, Behavior.randomDirection());
+			
+			controller.broadcastInt(Ports.TEAM_GARDENER_COUNT, controller.readBroadcast(Ports.TEAM_GARDENER_COUNT)+1);
+		}else {
+			Network.updateNetwork();
+			
+			if(controller.getHealth() < controller.getType().getStartingHealth()/4) {
+				controller.broadcastInt(Ports.TEAM_GARDENER_COUNT, controller.readBroadcast(Ports.TEAM_GARDENER_COUNT)-1);
+			}
+			
+			float max = controller.getVictoryPointCost()+RobotType.SOLDIER.bulletCost;
+			if(controller.getRoundNum() > 1500 && controller.getTeamBullets() > max) {
+				controller.donate(controller.getVictoryPointCost());
+			}
+			
+			Network.neutralTrees = controller.senseNearbyTrees(GameConstants.GENERAL_SPAWN_OFFSET*2, Team.NEUTRAL);
+			if(Network.myTrees.length > 2 || Network.neutralTrees.length < 5) {
+				shouldBuild = true;
+				isLeader = true;
+			}else {
+				shouldBuild = false;
+				start.rotateLeftDegrees(60);
+				isLeader = false;
+			}
+			leaderCheck();
+			
+			jackCount = controller.readBroadcastInt(Ports.TEAM_LUMBERJACK_COUNT);
+			soldierCount = controller.readBroadcastInt(Ports.TEAM_SOLDIER_COUNT);
+			
+		}
+	}
+	
+	public static void bestBuild()throws GameActionException{
+		if((jackCount < soldierCount )) {
+			Behavior.produceUnit(RobotType.LUMBERJACK,Behavior.randomDirection());
+		}else {
+			Behavior.produceUnit(RobotType.SOLDIER,Behavior.randomDirection());
+		}
+	}
+	public static void leaderCheck()throws GameActionException {
+		int id = findTheLeader();
+		if(id == controller.getID()) {
+			isLeader = true;
+			leader = controller.senseRobot(id);
+		}else if(id == 0){
+			if(controller.getRoundNum()%2 == 0) {
+				isLeader = true;
+				leader = controller.senseRobot(controller.getID());
+			}else {
+				isLeader = false;
 			}
 		}else {
-			return true;
+			leader = controller.senseRobot(id);
 		}
-		return true;
+	}
+	
+	public static int findTheLeader()throws GameActionException {
+		RobotInfo[] robots = controller.senseNearbyRobots(controller.getType().sensorRadius/3,controller.getTeam());
+		int lowestId = controller.getID();
+		
+		if(robots.length <= 1) {
+			lowestId = 0;
+			return lowestId;
+		}
+		
+		for(RobotInfo robot:robots) {
+			if(robot.getType() == controller.getType()
+					&& robot.getID() < lowestId) {
+				lowestId = robot.getID();
+			}
+		}
+		
+		
+		return lowestId;
 	}
 }

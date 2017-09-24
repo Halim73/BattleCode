@@ -15,17 +15,21 @@ public strictfp class Soldier {
 	
 	static MapLocation[] leaders = new MapLocation[100];
 	static MapLocation[] nearbyFlock = new MapLocation[50];
+	
 	static MapLocation goal = null;
-
-	static final float SEPERATION = RobotType.SOLDIER.bodyRadius*2f;
-	static final float ALIGNMENT = (float)Math.toRadians(60);
+	static MapLocation spawnLoc = null;
+	
+	static final float SEPERATION = controller.getType().bodyRadius*2.5f;
+	static final float ALIGNMENT = (float)Math.toRadians(30);
 	
 	static float cohesion = 0;
 	static float centerOfMassX = 0;
 	static float centerOfMassY = 0;
 	
 	static MapLocation current = null;
+	
 	static int startRound = 0;
+	static int start = 0;
 	
 	public static void runCluster() {
 		Behavior.initialize();
@@ -34,23 +38,33 @@ public strictfp class Soldier {
 			try {
 				prelim();
 				leaderCheck();
+				checkStuck();
 				
 				Behavior.evade();
 				
-				int counter = controller.getAttackCount();
-				int cap = 5;
+				start = controller.getAttackCount();
+				int cap = 3;
 				
-				if(counter < cap
-						&& controller.getTeamBullets() > GameConstants.PENTAD_SHOT_COST) {
-					fight();
+				if(start < cap
+						&& controller.getTeamBullets() > GameConstants.PENTAD_SHOT_COST
+						&& isStuck == false) {
 					
 					if(isLeader == true) {
+						//goal = avoidObstacles(goal.x,goal.y);
 						leaderMove(goal);
 					}else {
 						followerMove();
 					}
+					
+					fight();
 				}else {
-					goal = findGoal(goal);
+					if(isLeader == true 
+							&& Clock.getBytecodesLeft() >= 10000
+							|| isStuck == true) {
+						goal = findGoal(goal);
+					}else {
+						newLeader();
+					}
 					Clock.yield();
 				}
 				
@@ -63,40 +77,54 @@ public strictfp class Soldier {
 	
 	public static void prelim()throws GameActionException {
 		if(isStart) {
-			controller.broadcast(Ports.TEAM_SOLDIER_COUNT, Ports.TEAM_SOLDIER_COUNT+1);
+			controller.broadcast(Ports.TEAM_SOLDIER_COUNT, controller.readBroadcast(Ports.TEAM_SOLDIER_COUNT)+1);
+			
 			isStart = false;
 			Network.updateNetwork();
 			current = controller.getLocation();
 			startRound = controller.getRoundNum();
 			goal = Behavior.findSwarmDirection();
+			spawnLoc = controller.getLocation();
+			
+			controller.broadcastFloat(Ports.LAST_KNOWN_GOAL_X, goal.x);
+			controller.broadcastFloat(Ports.LAST_KNOWN_GOAL_Y, goal.y);
 		}else {
+			Network.updateNetwork();
+			
+			
+			if(Network.enemyBots.length > 0) {
+				goal = Network.enemyBots[0].getLocation().subtract(controller.getLocation().directionTo(Network.enemyBots[0].getLocation()).opposite(), controller.getType().strideRadius/2);
+			}
+			
 			if(controller.getHealth() < RobotType.SOLDIER.getStartingHealth()/4) {
-				controller.broadcast(Ports.TEAM_SOLDIER_COUNT, Ports.TEAM_SOLDIER_COUNT-1);
+				controller.broadcast(Ports.TEAM_SOLDIER_COUNT, controller.readBroadcast(Ports.TEAM_SOLDIER_COUNT)-1);
 				isLeader = false;
-				Network.updateNetwork();
+			}
+			if(isStuck == false) {
+				spawnLoc = controller.getLocation();
 			}
 		}	
 	}
 	
 	public static MapLocation findGoal(MapLocation goal)throws GameActionException{
-		float distance = 0;
-		float closestDistance = controller.getLocation().distanceTo(goal);
+		boolean shouldMove = MapLocation.doCirclesCollide(controller.getLocation(), RobotType.TANK.sensorRadius, goal, RobotType.TANK.sensorRadius/2);
 		
-		if(controller.getLocation().isWithinDistance(goal, controller.getType().sensorRadius)) {
-			if(Behavior.swarmLocs.length > 0) {
-				for(MapLocation loc:Behavior.swarmLocs) {
-					if(!goal.equals(loc)) {
-						distance = controller.getLocation().distanceTo(loc);
-						
-						if(distance < closestDistance) {
-							goal = loc;
-							distance = closestDistance;
-						}
-					}
-				}
+		if(shouldMove == true) {
+			if(Network.numArchons > 1) {
+				goal = Network.initialEnemyArchonLoc[Network.numArchons-1];
+			}else if(Network.numArchons <= 1){
+				//goal = controller.senseNearbyRobots(controller.getType().sensorRadius,controller.getTeam().opponent())[0].getLocation();
+				goal = goal.add(controller.getLocation().directionTo(Behavior.findSwarmDirection()),controller.getType().strideRadius);
+			}else {
+				//goal = goal.add(controller.getLocation().directionTo(Behavior.findSwarmDirection()),controller.getType().strideRadius);
+				goal = controller.senseNearbyRobots(controller.getType().sensorRadius)[0].getLocation();
 			}
+			return goal;
+		}else if(isStuck == true) {
+			goal = spawnLoc;
 		}else {
-			goal = goal.add(Behavior.randomDirection());
+			goal = Network.initialEnemyArchonLoc[0];
+			//goal = goal.add(controller.getLocation().directionTo(goal).rotateRightDegrees(30),controller.getType().strideRadius);
 		}
 		return goal;
 	}
@@ -150,6 +178,44 @@ public strictfp class Soldier {
 			Behavior.soldierShoot(enemy);
 		}
 	}
+	public static MapLocation avoidObstacles(float x, float y) {
+		int size = Network.neutralTrees.length + Network.myTrees.length + Network.enemyBots.length + Network.myRobots.length;
+		int count = 0;
+		
+		MapLocation[]obstacles = new MapLocation[size];
+		MapLocation bestPath = new MapLocation(x,y);
+		
+		obstacles = fillObstacles(obstacles,count);
+		
+		for(MapLocation obs:obstacles) {
+			if(obs != null && controller.getLocation().distanceTo(loc) < SEPERATION) {
+				x = x-(obs.x-controller.getLocation().x);
+				y = y-(obs.x-controller.getLocation().x);
+			}
+		}
+		bestPath = new MapLocation(x,y);
+		
+		return bestPath;
+	}
+	
+	public static MapLocation[] fillObstacles(MapLocation[] obstacles,int count) {
+		for(TreeInfo tree:Network.neutralTrees) {
+			obstacles[count++] = tree.getLocation();
+		}
+		
+		for(TreeInfo tree:Network.myTrees) {
+			obstacles[count++] = tree.getLocation();
+		}	
+		
+		for(RobotInfo robot:Network.enemyBots) {
+			obstacles[count++] = robot.getLocation();
+		}
+		
+		for(RobotInfo robot:Network.myRobots) {
+			obstacles[count++] = robot.getLocation();
+		}
+		return obstacles;
+	}
 	public static MapLocation balanceTrail(float x,float y) {
 		MapLocation leaderTrail = new MapLocation(x,y);
 		RobotInfo[] robots = controller.senseNearbyRobots(controller.getType().sensorRadius, controller.getTeam());
@@ -168,12 +234,15 @@ public strictfp class Soldier {
 				}
 			}
 		}
-		
+		leaderTrail = new MapLocation(x,y);
 		return leaderTrail;
 	}
 	public static void checkStuck() {
-		if(controller.getLocation().isWithinDistance(current, controller.getType().sensorRadius/2)) {
-			if(controller.getRoundNum() - startRound == 10) {
+		float sameArea = controller.getType().strideRadius/2;
+		float currentDistance = controller.getLocation().distanceTo(current);
+		
+		if(currentDistance < sameArea) {
+			if(controller.getRoundNum() - startRound >= 5) {
 				timeInSensorArea++;
 				startRound = controller.getRoundNum();
 				
@@ -223,21 +292,21 @@ public strictfp class Soldier {
 				switch(robot.getType()) {
 				case ARCHON:
 					if(controller.getLocation().isWithinDistance(robot.getLocation(),controller.getType().sensorRadius)) {
-						Behavior.checkDirection(dir.rotateRightDegrees(30));
+						Behavior.checkDirection(dir.opposite().rotateRightDegrees(30));
 					}
 					break;
 				case GARDENER:
 					break;
 				case LUMBERJACK:
 					if(controller.getLocation().isWithinDistance(robot.getLocation(),controller.getType().sensorRadius)) {
-						Behavior.checkDirection(dir.rotateRightDegrees(45));
+						Behavior.checkDirection(dir.opposite().rotateRightDegrees(45));
 					}
 					break;
 				case SCOUT:
 					break;
 				case SOLDIER:
 					if(controller.getLocation().isWithinDistance(robot.getLocation(),controller.getType().sensorRadius)) {
-						Behavior.checkDirection(dir.rotateRightDegrees(45));
+						Behavior.checkDirection(dir.opposite().rotateRightDegrees(60));
 					}
 					break;
 				case TANK:

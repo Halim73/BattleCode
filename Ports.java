@@ -8,8 +8,8 @@ public class Ports {
 	public static final int TEAM_LUMBERJACK_COUNT = 4;
 	public static final int TEAM_SOLDIER_COUNT = 5;
 	
-	public static final int TEAM_IS_STUCK_START = 6;
-	public static final int TEAM_IS_STUCK_END = 9;
+	public static final int LAST_KNOWN_GOAL_X = 6;
+	public static final int  LAST_KNOWN_GOAL_Y = 7;
 	
 	public static final int TEAM_ARCHON_COUNT = 10;
 	

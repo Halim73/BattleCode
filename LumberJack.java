@@ -37,21 +37,21 @@ public class LumberJack {
 					}
 				}
 				
-				MapLocation rallyPoint = Network.findBroadcast(RobotType.LUMBERJACK).add((float)Math.PI/3,controller.getType().strideRadius);
+				MapLocation rallyPoint = Behavior.findSwarmDirection();
 				
-				if(controller.getRoundNum()%10 == 0) {
+				/*if(controller.getRoundNum()%10 == 0) {
 					if(controller.readBroadcastBoolean(Ports.TEAM_IS_STUCK_START) == true) {
 						float x = controller.readBroadcastFloat(Ports.TEAM_IS_STUCK_START+1);
 						float y = controller.readBroadcastFloat(Ports.TEAM_IS_STUCK_START+1);
 
 						rallyPoint = new MapLocation(x,y);
 					}else {
-						rallyPoint = Network.findBroadcast(RobotType.SOLDIER);
+						rallyPoint = Behavior.findSwarmDirection();
 					}
 					
-				}
+				}*/
 				
-				Direction rallyDir = new Direction(controller.getLocation(),rallyPoint).opposite();
+				Direction rallyDir = new Direction(controller.getLocation(),rallyPoint);
 		
 				Behavior.handleTrees();
 				

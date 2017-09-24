@@ -11,8 +11,12 @@ public class Network {
 	static int myRobotCount = 0;
 	static int enemyCount = 0;
 	
-	static MapLocation[] inititialTeamArchonLoc;
-	static MapLocation[] inititialEnemyArchonLoc;
+	static boolean isStart = true;
+	
+	static MapLocation[] initialTeamArchonLoc;
+	public static MapLocation[] initialEnemyArchonLoc;
+	
+	public static int numArchons = 0;
 	
 	public static TreeInfo[] neutralTrees;
 	public static TreeInfo[] myTrees;
@@ -21,6 +25,15 @@ public class Network {
 	public static void updateNetwork()throws GameActionException{
 		senseBots();
 		senseTrees();
+		
+		if(isStart) {
+			initialEnemyArchonLoc = controller.getInitialArchonLocations(enemy);
+			numArchons = initialEnemyArchonLoc.length;
+			isStart = false;
+		}else if(controller.getRoundNum()%100 == 0) {
+			initialEnemyArchonLoc = controller.getInitialArchonLocations(enemy);
+			numArchons = initialEnemyArchonLoc.length;
+		}
 	}
 	public static void senseBots()throws GameActionException {
 		enemyBots = controller.senseNearbyRobots(-1,enemy);

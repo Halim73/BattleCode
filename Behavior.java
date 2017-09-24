@@ -32,7 +32,7 @@ public class Behavior {
 			}
 			
 			int checks = 1;
-			int stop = 24;
+			int stop = 36;
 			
 			while(checks <= stop) {
 				if(controller.canMove(direction.rotateLeftDegrees((float)(checks*10)),controller.getType().sensorRadius)){
@@ -234,21 +234,17 @@ public class Behavior {
 	
 	public static boolean plant() throws GameActionException{
 		int check = 0;
-		Direction dir = Direction.getNorth();
+		Direction dir = Direction.getNorth().rotateRightDegrees(30);
 		
 		if(controller.getTeamBullets()>GameConstants.BULLET_TREE_COST) {//have enough bullets. assuming we haven't built already.
-			for(int i=1;i<4;i++) {         		
-        		if(controller.canPlantTree(dir.rotateLeftDegrees(i*90))) {
-        			dir = dir.rotateLeftDegrees(i*90);
-        			controller.plantTree(dir);
-        			
-        		}else if(controller.canPlantTree(dir.rotateRightDegrees(i*90))) {
-        			dir = dir.rotateRightDegrees(i*90);
-        			controller.plantTree(dir);
-        			
+			for(int i=0;i<6;i++) {         		
+        		if(controller.canPlantTree(dir.rotateLeftDegrees(i*30))) {
+        			controller.plantTree(dir.rotateLeftDegrees(i*30));			
+        		}else if(controller.canPlantTree(dir.rotateRightDegrees(i*30))) {
+        			controller.plantTree(dir.rotateRightDegrees(i*30));
         		}
         		check++;
-        		if(check > 3) {
+        		if(check > 5) {
     				break;
     			}
         	}
@@ -328,7 +324,7 @@ public class Behavior {
 			MapLocation[] generalEnemies = controller.getInitialArchonLocations(controller.getTeam().opponent());
 			MapLocation generalEnemy = generalEnemies[0];
 			
-			if(controller.readBroadcastInt(Ports.ENEMY_COUNT) < 3){
+			if(controller.readBroadcastInt(Ports.ENEMY_COUNT) <= 3){
 				if(generalEnemy != null) {
 					return generalEnemy;
 				}else {
